@@ -152,6 +152,8 @@ struct lvds_panel_info {
 struct msm_panel_info {
 	__u32 xres;
 	__u32 yres;
+	__u32 width;
+	__u32 height;
 	__u32 bpp;
 	__u32 mode2_xres;
 	__u32 mode2_yres;
@@ -189,6 +191,7 @@ struct msm_fb_panel_data {
 	void (*set_rect) (int x, int y, int xres, int yres);
 	void (*set_vsync_notifier) (msm_fb_vsync_handler_type, void *arg);
 	void (*set_backlight) (struct msm_fb_data_type *);
+	void (*set_dispparam) (int param);
 
 	/* function entry chain */
 	int (*on) (struct platform_device *pdev);

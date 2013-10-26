@@ -995,34 +995,6 @@ psy_not_supported:
 	return -ENXIO;
 }
 
-static int msm_otg_notify_chg_type(struct msm_otg *motg)
-{
-	static int charger_type;
-	/*
-	 * TODO
-	 * Unify OTG driver charger types and power supply charger types
-	 */
-	if (charger_type == motg->chg_type)
-		return 0;
-
-	if (motg->chg_type == USB_SDP_CHARGER)
-		charger_type = POWER_SUPPLY_TYPE_USB;
-	else if (motg->chg_type == USB_CDP_CHARGER)
-		charger_type = POWER_SUPPLY_TYPE_USB_CDP;
-	else if (motg->chg_type == USB_DCP_CHARGER ||
-			motg->chg_type == USB_PROPRIETARY_CHARGER)
-		charger_type = POWER_SUPPLY_TYPE_USB_DCP;
-	else if ((motg->chg_type == USB_ACA_DOCK_CHARGER ||
-		motg->chg_type == USB_ACA_A_CHARGER ||
-		motg->chg_type == USB_ACA_B_CHARGER ||
-		motg->chg_type == USB_ACA_C_CHARGER))
-		charger_type = POWER_SUPPLY_TYPE_USB_ACA;
-	else
-		charger_type = POWER_SUPPLY_TYPE_BATTERY;
-
-	return pm8921_set_usb_power_supply_type(charger_type);
-}
-
 static int msm_otg_notify_power_supply(struct msm_otg *motg, unsigned mA)
 {
 
@@ -1063,11 +1035,6 @@ static void msm_otg_notify_charger(struct msm_otg *motg, unsigned mA)
 		motg->chg_type == USB_ACA_C_CHARGER) &&
 			mA > IDEV_ACA_CHG_LIMIT)
 		mA = IDEV_ACA_CHG_LIMIT;
-
-	if (msm_otg_notify_chg_type(motg))
-		dev_err(motg->phy.dev,
-			"Failed notifying %d charger type to PMIC\n",
-							motg->chg_type);
 
 	if (motg->cur_power == mA)
 		return;
@@ -1261,6 +1228,41 @@ static void msm_hsusb_vbus_power(struct msm_otg *motg, bool on)
 		vbus_is_on = false;
 	}
 }
+
+static bool vbus_is_on;
+int mhl_vbus_status(void)
+{
+	pr_info("%s %d\n", __func__, vbus_is_on);
+	return vbus_is_on;
+}
+
+#if defined(CONFIG_FB_MSM_HDMI_MHL)
+void mhl_vbus_power(bool on)
+{
+	int ret;
+
+	if (vbus_is_on == on)
+		return;
+
+	pr_info("%s: on %d\n", __func__, on);
+	if (on) {
+		ret = regulator_enable(vbus_otg);
+		if (ret) {
+			pr_err("unable to enable vbus_otg\n");
+			return;
+		}
+		vbus_is_on = true;
+
+	} else {
+		ret = regulator_disable(vbus_otg);
+		if (ret) {
+			pr_err("unable to disable vbus_otg\n");
+			return;
+		}
+		vbus_is_on = false;
+	}
+}
+#endif
 
 static int msm_otg_set_host(struct usb_otg *otg, struct usb_bus *host)
 {
@@ -1946,7 +1948,7 @@ static void msm_chg_detect_work(struct work_struct *w)
 		 */
 		udelay(100);
 		msm_chg_enable_aca_intr(motg);
-		dev_dbg(phy->dev, "chg_type = %s\n",
+		dev_info(phy->dev, "chg_type = %s\n",
 			chg_to_string(motg->chg_type));
 		queue_work(system_nrt_wq, &motg->sm_work);
 		return;

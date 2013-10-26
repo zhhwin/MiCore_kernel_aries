@@ -723,8 +723,13 @@ void kgsl_sharedmem_free(struct kgsl_memdesc *memdesc)
 
 	if (memdesc->ops && memdesc->ops->free)
 		memdesc->ops->free(memdesc);
-
-	kgsl_sg_free(memdesc->sg, memdesc->sglen);
+	if (memdesc->sg != NULL) {
+		int sgsize = memdesc->sg[0].length > PAGE_SIZE ? memdesc->sg[0].length : PAGE_SIZE;
+		int sglen = PAGE_ALIGN(memdesc->size) / sgsize;
+		if (kgsl_mmu_get_mmutype() == KGSL_MMU_TYPE_IOMMU)
+			sglen++;
+		kgsl_sg_free(memdesc->sg, sglen);
+	}
 
 	memset(memdesc, 0, sizeof(*memdesc));
 }

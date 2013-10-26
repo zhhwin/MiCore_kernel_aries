@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2006-2012, Code Aurora Forum. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -97,13 +97,13 @@ struct tabla_codec_dai_data {
 
 #define TABLA_MBHC_BUTTON_MIN 0x8000
 
-#define TABLA_MBHC_FAKE_INSERT_LOW 10
+#define TABLA_MBHC_FAKE_INSERT_LOW 30
 #define TABLA_MBHC_FAKE_INSERT_HIGH 80
 #define TABLA_MBHC_FAKE_INS_HIGH_NO_GPIO 150
 
 #define TABLA_MBHC_STATUS_REL_DETECTION 0x0C
 
-#define TABLA_MBHC_GPIO_REL_DEBOUNCE_TIME_MS 200
+#define TABLA_MBHC_GPIO_REL_DEBOUNCE_TIME_MS 20
 
 #define TABLA_MBHC_FAKE_INS_DELTA_MV 200
 #define TABLA_MBHC_FAKE_INS_DELTA_SCALED_MV 300
@@ -2242,7 +2242,7 @@ static void tabla_codec_start_hs_polling(struct snd_soc_codec *codec)
 		pr_debug("Polling is not active, do not start polling\n");
 		return;
 	}
-	snd_soc_write(codec, TABLA_A_MBHC_SCALING_MUX_1, 0x84);
+	snd_soc_write(codec, TABLA_A_MBHC_SCALING_MUX_1, 0x88);
 
 	if (tabla->no_mic_headset_override) {
 		pr_debug("%s setting button threshold to min", __func__);
@@ -2600,8 +2600,11 @@ static int tabla_codec_enable_micbias(struct snd_soc_dapm_widget *w,
 			tabla_codec_switch_micbias(codec, 0);
 			TABLA_RELEASE_LOCK(tabla->codec_resource_lock);
 		}
-
+#ifdef CONFIG_ARCH_APQ8064
+		snd_soc_update_bits(codec, w->reg, 0x1E, 0x0A);
+#else
 		snd_soc_update_bits(codec, w->reg, 0x0E, 0x0A);
+#endif
 		tabla_codec_update_cfilt_usage(codec, cfilt_sel_val, 1);
 
 		if (strnstr(w->name, internal1_text, 30))
@@ -5161,7 +5164,7 @@ static short tabla_codec_setup_hs_polling(struct snd_soc_codec *codec)
 	snd_soc_update_bits(codec, tabla->mbhc_bias_regs.ctl_reg, 0x1F, 0x16);
 
 	snd_soc_update_bits(codec, TABLA_A_CDC_MBHC_CLK_CTL, 0x2, 0x2);
-	snd_soc_write(codec, TABLA_A_MBHC_SCALING_MUX_1, 0x84);
+	snd_soc_write(codec, TABLA_A_MBHC_SCALING_MUX_1, 0x88);
 
 	snd_soc_update_bits(codec, TABLA_A_TX_7_MBHC_EN, 0x80, 0x80);
 	snd_soc_update_bits(codec, TABLA_A_TX_7_MBHC_EN, 0x1F, 0x1C);
@@ -5225,7 +5228,7 @@ void tabla_set_and_turnoff_hph_padac(struct snd_soc_codec *codec)
 
 	snd_soc_update_bits(codec, TABLA_A_RX_HPH_CNP_EN, 0x30, 0x00);
 	snd_soc_update_bits(codec, TABLA_A_RX_HPH_L_DAC_CTL,
-			    0xC0, 0x00);
+			    0x80, 0x00);
 	snd_soc_update_bits(codec, TABLA_A_RX_HPH_R_DAC_CTL,
 			    0xC0, 0x00);
 	usleep_range(wg_time * 1000, wg_time * 1000);
@@ -5689,7 +5692,7 @@ void tabla_mbhc_cal(struct snd_soc_codec *codec)
 			    cfilt_mode);
 	snd_soc_update_bits(codec, TABLA_A_BIAS_CENTRAL_BG_CTL, 0x02, bg_mode);
 
-	snd_soc_write(codec, TABLA_A_MBHC_SCALING_MUX_1, 0x84);
+	snd_soc_write(codec, TABLA_A_MBHC_SCALING_MUX_1, 0x88);
 	usleep_range(100, 100);
 
 	wcd9xxx_enable_irq(codec->control_data, TABLA_IRQ_MBHC_POTENTIAL);
@@ -7094,6 +7097,7 @@ static void tabla_hs_gpio_handler(struct snd_soc_codec *codec)
 				    0x00);
 		snd_soc_update_bits(codec, TABLA_A_MBHC_HPH, 0x01, 0x00);
 		tabla_codec_detect_plug_type(codec);
+
 	} else if ((tabla->current_plug != PLUG_TYPE_NONE) && !insert) {
 		tabla->lpi_enabled = false;
 		wmb();
@@ -7136,6 +7140,7 @@ static void tabla_hs_gpio_handler(struct snd_soc_codec *codec)
 					    0x08, 0x00);
 			/* Turn off override */
 			tabla_turn_onoff_override(codec, false);
+
 		}
 	}
 
@@ -7271,6 +7276,10 @@ static int tabla_mbhc_init_and_calibrate(struct tabla_priv *tabla)
 				 TABLA_IRQ_HPH_PA_OCPR_FAULT);
 
 		if (tabla->mbhc_cfg.gpio) {
+			/* set gpio_irq from gpio on the fly */
+			if (!tabla->mbhc_cfg.gpio_irq)
+				tabla->mbhc_cfg.gpio_irq =
+					gpio_to_irq(tabla->mbhc_cfg.gpio);
 			ret = request_threaded_irq(tabla->mbhc_cfg.gpio_irq,
 					       NULL,
 					       tabla_mechanical_plug_detect_irq,
@@ -7707,6 +7716,9 @@ static const struct tabla_reg_mask_val tabla_codec_reg_init_val[] = {
 
 	/* config DMIC clk to CLK_MODE_1 (3.072Mhz@12.88Mhz mclk) */
 	{TABLA_A_CDC_CLK_DMIC_CTL, 0x2A, 0x2A},
+#ifdef CONFIG_ARCH_APQ8064
+	{TABLA_A_MICB_2_CTL, 0x10, 0x00},
+#endif
 
 };
 

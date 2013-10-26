@@ -31,8 +31,11 @@ enum msm_cam_flash_stat{
 	MSM_CAM_FLASH_ON,
 };
 
+#if defined CONFIG_MSM_CAMERA_FLASH_SC628A
 static struct i2c_client *sc628a_client;
+#endif
 
+#if defined CONFIG_MSM_CAMERA_FLASH_SC628A
 static int32_t flash_i2c_txdata(struct i2c_client *client,
 		unsigned char *txdata, int length)
 {
@@ -108,7 +111,9 @@ static struct i2c_driver sc628a_i2c_driver = {
 		.name = "sc628a",
 	},
 };
+#endif /* CONFIG_MSM_CAMERA_FLASH_SC628A */
 
+#ifdef CONFIG_MSM_CAMERA_FLASH_TPS61310
 static struct i2c_client *tps61310_client;
 
 static const struct i2c_device_id tps61310_i2c_id[] = {
@@ -151,6 +156,7 @@ static struct i2c_driver tps61310_i2c_driver = {
 		.name = "tps61310",
 	},
 };
+#endif /* CONFIG_MSM_CAMERA_FLASH_TPS61310 */
 
 static int config_flash_gpio_table(enum msm_cam_flash_stat stat,
 			struct msm_camera_sensor_strobe_flash_data *sfdata)
@@ -315,33 +321,70 @@ int msm_camera_flash_led(
 	return rc;
 }
 
+#ifdef CONFIG_LEDS_LM3554
+extern int lm3554_flashlight_power(int on);
+extern int lm3554_flashlight_control(int mode);
+#endif
+
 int msm_camera_flash_external(
 	struct msm_camera_sensor_flash_external *external,
 	unsigned led_state)
 {
 	int rc = 0;
 
+#ifdef CONFIG_LEDS_LM3554
+	switch (led_state) {
+
+	case MSM_CAMERA_LED_INIT:
+		lm3554_flashlight_power(1);
+		break;
+
+	case MSM_CAMERA_LED_RELEASE:
+		lm3554_flashlight_power(0);
+		break;
+
+	case MSM_CAMERA_LED_OFF:
+		lm3554_flashlight_control(led_state);
+		break;
+
+	case MSM_CAMERA_LED_LOW:
+		lm3554_flashlight_control(led_state);
+		break;
+
+	case MSM_CAMERA_LED_HIGH:
+		lm3554_flashlight_control(led_state);
+		break;
+
+	default:
+		rc = -EFAULT;
+		break;
+	}
+#else
 	switch (led_state) {
 
 	case MSM_CAMERA_LED_INIT:
 		if (external->flash_id == MAM_CAMERA_EXT_LED_FLASH_SC628A) {
 			if (!sc628a_client) {
+#ifdef CONFIG_MSM_CAMERA_FLASH_SC628A
 				rc = i2c_add_driver(&sc628a_i2c_driver);
 				if (rc < 0 || sc628a_client == NULL) {
 					pr_err("sc628a_i2c_driver add failed\n");
 					rc = -ENOTSUPP;
 					return rc;
 				}
+#endif
 			}
 		} else if (external->flash_id ==
 			MAM_CAMERA_EXT_LED_FLASH_TPS61310) {
 			if (!tps61310_client) {
+#ifdef CONFIG_MSM_CAMERA_FLASH_TPS61310
 				rc = i2c_add_driver(&tps61310_i2c_driver);
 				if (rc < 0 || tps61310_client == NULL) {
 					pr_err("tps61310_i2c_driver add failed\n");
 					rc = -ENOTSUPP;
 					return rc;
 				}
+#endif
 			}
 		} else {
 			pr_err("Flash id not supported\n");
@@ -463,6 +506,7 @@ error:
 		rc = -EFAULT;
 		break;
 	}
+#endif /* CONFIG_LEDS_LM3554 */
 	return rc;
 }
 

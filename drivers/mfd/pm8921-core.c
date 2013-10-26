@@ -927,6 +927,10 @@ static int __devinit pm8921_probe(struct platform_device *pdev)
 		goto err;
 	}
 
+	/* Enable SMPL with 0.5s delay */
+	pm8xxx_smpl_set_delay(PM8XXX_SMPL_DELAY_0p5);
+	pm8xxx_smpl_control(1);
+
 	/* gpio might not work if no irq device is found */
 	WARN_ON(pmic->irq_chip == NULL);
 

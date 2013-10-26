@@ -31,6 +31,7 @@ enum led_brightness {
 struct led_classdev {
 	const char		*name;
 	int			 brightness;
+	int			 origin_brightness;
 	int			 max_brightness;
 	int			 flags;
 

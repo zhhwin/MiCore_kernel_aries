@@ -24,9 +24,40 @@
 #include "msm_fb.h"
 #include "hdmi_msm.h"
 #include "external_common.h"
-#include "mhl_api.h"
+#include <linux/mhl_api.h>
 
 #include "mdp.h"
+
+uint8_t video_cap_d_block_found = false;
+enum EDID_ErrorCodes {
+	EDID_OK,
+	EDID_INCORRECT_HEADER,
+	EDID_CHECKSUM_ERROR,
+	EDID_NO_861_EXTENSIONS,
+	EDID_SHORT_DESCRIPTORS_OK,
+	EDID_LONG_DESCRIPTORS_OK,
+	EDID_EXT_TAG_ERROR,
+	EDID_REV_ADDR_ERROR,
+	EDID_V_DESCR_OVERFLOW,
+	EDID_UNKNOWN_TAG_CODE,
+	EDID_NO_DETAILED_DESCRIPTORS,
+	EDID_DDC_BUS_REQ_FAILURE,
+	EDID_DDC_BUS_RELEASE_FAILURE
+};
+#define AUDIO_D_BLOCK       0x01
+#define VIDEO_D_BLOCK       0x02
+#define VENDOR_SPEC_D_BLOCK 0x03
+#define SPKR_ALLOC_D_BLOCK  0x04
+#define USE_EXTENDED_TAG    0x07
+#define COLORIMETRY_D_BLOCK 0x05
+#define HDMI_SIGNATURE_LEN  0x03
+#define CEC_PHYS_ADDR_LEN   0x02
+#define EDID_EXTENSION_TAG  0x02
+#define EDID_REV_THREE      0x03
+#define EDID_DATA_START     0x04
+#define EDID_BLOCK_0        0x00
+#define EDID_BLOCK_2_3      0x01
+#define VIDEO_CAPABILITY_D_BLOCK 0x00
 
 struct external_common_state_type *external_common_state;
 EXPORT_SYMBOL(external_common_state);
@@ -250,8 +281,8 @@ EXPORT_SYMBOL(hdmi_common_supported_video_mode_lut);
 struct hdmi_disp_mode_timing_type
 	hdmi_mhl_supported_video_mode_lut[HDMI_VFRMT_MAX] = {
 	HDMI_SETTINGS_640x480p60_4_3,
-	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_720x480p60_4_3),
-	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_720x480p60_16_9),
+	HDMI_SETTINGS_720x480p60_4_3,
+	HDMI_SETTINGS_720x480p60_16_9,
 	HDMI_SETTINGS_1280x720p60_16_9,
 	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_1920x1080i60_16_9),
 	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_1440x480i60_4_3),
@@ -280,8 +311,8 @@ struct hdmi_disp_mode_timing_type
 	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_1440x576p50_4_3),
 	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_1440x576p50_16_9),
 	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_1920x1080p50_16_9),
-	HDMI_SETTINGS_1920x1080p24_16_9,
-	HDMI_SETTINGS_1920x1080p25_16_9,
+	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_1920x1080p24_16_9),
+	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_1920x1080p25_16_9),
 	HDMI_SETTINGS_1920x1080p30_16_9,
 	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_2880x480p60_4_3),
 	VFRMT_NOT_SUPPORTED(HDMI_VFRMT_2880x480p60_16_9),
@@ -1250,9 +1281,11 @@ static void hdmi_edid_extract_extended_data_blocks(const uint8 *in_buf)
 {
 	uint8 len = 0;
 	uint32 start_offset = DBC_START_OFFSET;
+	uint8 const *etag = hdmi_edid_find_block(in_buf, start_offset, 7, &len);
+	video_cap_d_block_found = false;
+
 
 	/* A Tage code of 7 identifies extended data blocks */
-	uint8 const *etag = hdmi_edid_find_block(in_buf, start_offset, 7, &len);
 
 	while (etag != NULL) {
 		/* The extended data block should at least be 2 bytes long */
@@ -1288,6 +1321,8 @@ static void hdmi_edid_extract_extended_data_blocks(const uint8 *in_buf)
 					external_common_state->pt_scan_info,
 					external_common_state->it_scan_info,
 					external_common_state->ce_scan_info);
+
+				video_cap_d_block_found = true;
 				break;
 			default:
 				DEV_DBG("EDID: Extend Tag Code %d not"
@@ -1636,7 +1671,6 @@ static void hdmi_edid_get_display_mode(const uint8 *data_buf,
 	boolean has60hz_mode	= FALSE;
 	boolean has50hz_mode	= FALSE;
 
-
 	disp_mode_list->num_of_elements = 0;
 	disp_mode_list->disp_multi_3d_mode_list_cnt = 0;
 	if (svd != NULL) {
@@ -1857,6 +1891,7 @@ int hdmi_common_read_edid(void)
 	char vendor_id[5];
 	/* EDID_BLOCK_SIZE[0x80] Each page size in the EDID ROM */
 	uint8 edid_buf[0x80 * 4];
+	video_cap_d_block_found = false;
 
 	external_common_state->pt_scan_info = 0;
 	external_common_state->it_scan_info = 0;
@@ -1964,6 +1999,18 @@ int hdmi_common_read_edid(void)
 
 	hdmi_edid_get_display_mode(edid_buf,
 		&external_common_state->disp_mode_list, num_og_cea_blocks);
+
+	if (video_cap_d_block_found == true) {
+		/* limited range */
+		MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x70, 0x00EB0010);
+		MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x74, 0x00EB0010);
+		MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x78, 0x00EB0010);
+	} else {
+		/* full range */
+		MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x70, 0x00FF0000);
+		MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x74, 0x00FF0000);
+		MDP_OUTP(MDP_BASE + DMA_E_BASE + 0x78, 0x00FF0000);
+	}
 
 	return 0;
 

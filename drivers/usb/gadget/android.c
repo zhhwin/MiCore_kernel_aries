@@ -24,6 +24,7 @@
 #include <linux/utsname.h>
 #include <linux/platform_device.h>
 #include <linux/pm_qos.h>
+#include <linux/wakelock.h>
 
 #include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
@@ -201,6 +202,8 @@ enum android_device_state {
 	USB_CONFIGURED,
 };
 
+struct wake_lock android_wlock;
+
 static void android_pm_qos_update_latency(struct android_dev *dev, int vote)
 {
 	struct android_usb_platform_data *pdata = dev->pdata;
@@ -281,6 +284,8 @@ static void android_work(struct work_struct *data)
 		pr_info("%s: did not send uevent (%d %d %p)\n", __func__,
 			 dev->connected, dev->sw_connected, cdev->config);
 	}
+
+	wake_lock_timeout(&android_wlock, HZ / 2);
 }
 
 static void android_enable(struct android_dev *dev)
@@ -1886,6 +1891,8 @@ static int __init init(void)
 	/* Override composite driver functions */
 	composite_driver.setup = android_setup;
 	composite_driver.disconnect = android_disconnect;
+
+	wake_lock_init(&android_wlock, WAKE_LOCK_SUSPEND, "android_work");
 
 	ret = platform_driver_register(&android_platform_driver);
 	if (ret) {

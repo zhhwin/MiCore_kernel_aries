@@ -24,7 +24,7 @@
 #define PC_CC_COLS             13
 
 #define PC_TEMP_ROWS		29
-#define PC_TEMP_COLS		8
+#define PC_TEMP_COLS		12
 
 #define MAX_SINGLE_LUT_COLS	20
 

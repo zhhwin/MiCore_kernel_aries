@@ -29,6 +29,7 @@
 #define IN_BUF_SIZE		16384
 #define MAX_IN_BUF_SIZE	32768
 #define MAX_SYNC_OBJ_NAME_SIZE	32
+#define UINT32_MAX     UINT_MAX
 /* Size of the buffer used for deframing a packet
   reveived from the PC tool*/
 #define HDLC_MAX 4096
@@ -60,6 +61,11 @@
 #define DIAG_CTRL_MSG_EVENT_MASK	10
 #define DIAG_CTRL_MSG_F3_MASK	11
 #define CONTROL_CHAR	0x7E
+
+#define DIAG_CON_APSS (0x0001)	/* Bit mask for APSS */
+#define DIAG_CON_MPSS (0x0002)	/* Bit mask for MPSS */
+#define DIAG_CON_LPASS (0x0004)	/* Bit mask for LPASS */
+#define DIAG_CON_WCNSS (0x0008)	/* Bit mask for WCNSS */
 
 /* Maximum number of pkt reg supported at initialization*/
 extern unsigned int diag_max_reg;
@@ -227,6 +233,9 @@ struct diagchar_dev {
 	struct work_struct diag_qdsp_mask_update_work;
 	struct work_struct diag_wcnss_mask_update_work;
 	struct work_struct diag_read_smd_dci_work;
+	struct work_struct diag_clean_modem_reg_work;
+	struct work_struct diag_clean_lpass_reg_work;
+	struct work_struct diag_clean_wcnss_reg_work;
 	uint8_t *msg_masks;
 	uint8_t *log_masks;
 	int log_masks_length;

@@ -270,7 +270,7 @@ struct msm_eeprom_info {
 };
 
 struct msm_camera_sensor_info {
-	const char *sensor_name;
+	char *sensor_name;
 	int sensor_reset_enable;
 	int sensor_reset;
 	int sensor_pwd;

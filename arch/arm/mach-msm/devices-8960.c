@@ -1568,8 +1568,8 @@ struct platform_device msm_device_bam_dmux = {
 };
 
 static struct msm_watchdog_pdata msm_watchdog_pdata = {
-	.pet_time = 10000,
-	.bark_time = 11000,
+	.pet_time = 20000,
+	.bark_time = 30000,
 	.has_secure = true,
 };
 
@@ -1628,6 +1628,45 @@ int __init msm_add_sdcc(unsigned int controller, struct mmc_platform_data *plat)
 	return platform_device_register(pdev);
 }
 
+static struct resource resources_qup_i2c_gsbi8[] = {
+	{
+		.name = "gsbi_qup_i2c_addr",
+		.start = MSM_GSBI8_PHYS,
+		.end = MSM_GSBI8_PHYS + 4 - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.name = "qup_phys_addr",
+		.start = MSM_GSBI8_QUP_PHYS,
+		.end = MSM_GSBI8_QUP_PHYS + MSM_QUP_SIZE - 1,
+		.flags = IORESOURCE_MEM,
+	},
+	{
+		.name = "qup_err_intr",
+		.start = GSBI8_QUP_IRQ,
+		.end = GSBI8_QUP_IRQ,
+		.flags = IORESOURCE_IRQ,
+	},
+	{
+		.name = "i2c_clk",
+		.start = 37,
+		.end = 37,
+		.flags = IORESOURCE_IO,
+	},
+	{
+		.name = "i2c_sda",
+		.start = 36,
+		.end = 36,
+		.flags = IORESOURCE_IO,
+	},
+};
+
+struct platform_device msm8960_device_qup_i2c_gsbi8 = {
+	.name = "qup_i2c",
+	.id = 8,
+	.num_resources = ARRAY_SIZE(resources_qup_i2c_gsbi8),
+	.resource = resources_qup_i2c_gsbi8,
+};
 static struct resource resources_qup_i2c_gsbi4[] = {
 	{
 		.name	= "gsbi_qup_i2c_addr",
@@ -2372,6 +2411,17 @@ static struct fs_driver_data gfx3d_fs_data = {
 	.bus_port0 = MSM_BUS_MASTER_GRAPHICS_3D,
 };
 
+static struct fs_driver_data gfx3d_fs_data_8960ab = {
+	.clks = (struct fs_clk_data[]){
+		{ .name = "core_clk", .reset_rate = 27000000 },
+		{ .name = "iface_clk" },
+		{ .name = "bus_clk" },
+		{ 0 }
+	},
+	.bus_port0 = MSM_BUS_MASTER_GRAPHICS_3D,
+	.bus_port1 = MSM_BUS_MASTER_GRAPHICS_3D_PORT1,
+};
+
 static struct fs_driver_data ijpeg_fs_data = {
 	.clks = (struct fs_clk_data[]){
 		{ .name = "core_clk" },
@@ -2420,6 +2470,17 @@ static struct fs_driver_data ved_fs_data = {
 	.bus_port1 = MSM_BUS_MASTER_HD_CODEC_PORT1,
 };
 
+static struct fs_driver_data ved_fs_data_8960ab = {
+	.clks = (struct fs_clk_data[]){
+		{ .name = "core_clk" },
+		{ .name = "iface_clk" },
+		{ .name = "bus_clk" },
+		{ 0 }
+	},
+	.bus_port0 = MSM_BUS_MASTER_VIDEO_DEC,
+	.bus_port1 = MSM_BUS_MASTER_VIDEO_ENC,
+};
+
 static struct fs_driver_data vfe_fs_data = {
 	.clks = (struct fs_clk_data[]){
 		{ .name = "core_clk" },
@@ -2452,6 +2513,17 @@ struct platform_device *msm8960_footswitch[] __initdata = {
 	FS_8X60(FS_VED,    "vdd",	"msm_vidc.0",	&ved_fs_data),
 };
 unsigned msm8960_num_footswitch __initdata = ARRAY_SIZE(msm8960_footswitch);
+
+struct platform_device *msm8960ab_footswitch[] __initdata = {
+	FS_8X60(FS_MDP,    "vdd",	"mdp.0",	&mdp_fs_data),
+	FS_8X60(FS_ROT,    "vdd",	"msm_rotator.0", &rot_fs_data),
+	FS_8X60(FS_IJPEG,  "vdd",	"msm_gemini.0",	&ijpeg_fs_data),
+	FS_8X60(FS_VFE,    "vdd",	"msm_vfe.0",	&vfe_fs_data),
+	FS_8X60(FS_VPE,    "vdd",	"msm_vpe.0",	&vpe_fs_data),
+	FS_8X60(FS_GFX3D,  "vdd",	"kgsl-3d0.0",	&gfx3d_fs_data_8960ab),
+	FS_8X60(FS_VED,    "vdd",	"msm_vidc.0",	&ved_fs_data_8960ab),
+};
+unsigned msm8960ab_num_footswitch __initdata = ARRAY_SIZE(msm8960ab_footswitch);
 
 #ifdef CONFIG_MSM_ROTATOR
 static struct msm_bus_vectors rotator_init_vectors[] = {

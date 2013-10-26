@@ -32,6 +32,8 @@
 /* Bootoader IDs */
 #define MXT_BOOTLOADER_ID_224		0x0A
 #define MXT_BOOTLOADER_ID_224E		0x06
+#define MXT_BOOTLOADER_ID_336S		0x1A
+#define MXT_BOOTLOADER_ID_384E		0x08
 #define MXT_BOOTLOADER_ID_1386		0x01
 #define MXT_BOOTLOADER_ID_1386E		0x10
 
@@ -46,6 +48,8 @@ struct mxt_config_info {
 	u8 bootldr_id;
 	/* Points to the firmware name to be upgraded to */
 	const char *fw_name;
+	u8 key_gain;
+	u8 key_threshold;
 };
 
 /* The platform data for the Atmel maXTouch touchscreen driver */
@@ -70,7 +74,10 @@ struct mxt_platform_data {
 	bool	digital_pwr_regulator;
 	int reset_gpio;
 	int irq_gpio;
+	int lcd_gpio;
 	int *key_codes;
+	int move_threshold;
+	int max_ref;
 
 	u8(*read_chg) (void);
 	int (*init_hw) (bool);

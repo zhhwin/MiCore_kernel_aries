@@ -14,6 +14,7 @@
 #define __HDMI_MSM_H__
 
 #include <mach/msm_iomap.h>
+#include <linux/wakelock.h>
 #include "external_common.h"
 /* #define PORT_DEBUG */
 
@@ -61,7 +62,7 @@ struct hdmi_msm_state_type {
 	boolean hpd_cable_chg_detected;
 	boolean full_auth_done;
 	boolean hpd_during_auth;
-	struct work_struct hpd_state_work;
+	struct work_struct hpd_state_work, hpd_read_work;
 	struct timer_list hpd_state_timer;
 	struct completion ddc_sw_done;
 
@@ -111,6 +112,7 @@ struct hdmi_msm_state_type {
 
 	struct external_common_state_type common;
 	boolean is_mhl_enabled;
+	struct wake_lock hdmi_wake_lock;
 };
 
 extern struct hdmi_msm_state_type *hdmi_msm_state;

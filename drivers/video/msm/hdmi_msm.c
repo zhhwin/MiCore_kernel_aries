@@ -3696,6 +3696,7 @@ static void hdmi_msm_avi_info_frame(void)
 	int i;
 	int mode = 0;
 	boolean use_ce_scan_info = TRUE;
+	extern uint8_t video_cap_d_block_found;
 
 	switch (external_common_state->video_resolution) {
 	case HDMI_VFRMT_720x480p60_4_3:
@@ -3805,8 +3806,13 @@ static void hdmi_msm_avi_info_frame(void)
 
 	/* Data Byte 02: C1 C0 M1 M0 R3 R2 R1 R0 */
 	aviInfoFrame[4]  = hdmi_msm_avi_iframe_lut[1][mode];
+
 	/* Data Byte 03: ITC EC2 EC1 EC0 Q1 Q0 SC1 SC0 */
-	aviInfoFrame[5]  = hdmi_msm_avi_iframe_lut[2][mode];
+	if (video_cap_d_block_found)
+		aviInfoFrame[5]  = (hdmi_msm_avi_iframe_lut[2][mode] & 0xF3) | 0x04;
+	else
+		aviInfoFrame[5]  = hdmi_msm_avi_iframe_lut[2][mode] & 0xF3;
+
 	/* Data Byte 04: 0 VIC6 VIC5 VIC4 VIC3 VIC2 VIC1 VIC0 */
 	aviInfoFrame[6]  = hdmi_msm_avi_iframe_lut[3][mode];
 	/* Data Byte 05: 0 0 0 0 PR3 PR2 PR1 PR0 */
@@ -4210,6 +4216,39 @@ static void hdmi_msm_cec_read_timer_func(unsigned long data)
 }
 #endif
 
+static void hdmi_msm_hpd_read_work(struct work_struct *work)
+{
+	uint32 hpd_ctrl;
+
+	clk_prepare_enable(hdmi_msm_state->hdmi_app_clk);
+	hdmi_msm_state->pd->core_power(1, 1);
+	hdmi_msm_state->pd->enable_5v(1);
+	hdmi_msm_set_mode(FALSE);
+	hdmi_msm_init_phy(external_common_state->video_resolution);
+	/* HDMI_USEC_REFTIMER[0x0208] */
+	HDMI_OUTP(0x0208, 0x0001001B);
+	hpd_ctrl = (HDMI_INP(0x0258) & ~0xFFF) | 0xFFF;
+
+	/* Toggle HPD circuit to trigger HPD sense */
+	HDMI_OUTP(0x0258, ~(1 << 28) & hpd_ctrl);
+	HDMI_OUTP(0x0258, (1 << 28) | hpd_ctrl);
+
+	hdmi_msm_set_mode(TRUE);
+	msleep(1000);
+	external_common_state->hpd_state = (HDMI_INP(0x0250) & 0x2) >> 1;
+	if (external_common_state->hpd_state) {
+		hdmi_msm_read_edid();
+		DEV_DBG("%s: sense CONNECTED: send ONLINE\n", __func__);
+		kobject_uevent(external_common_state->uevent_kobj,
+			KOBJ_ONLINE);
+	}
+	hdmi_msm_hpd_off();
+	hdmi_msm_set_mode(FALSE);
+	hdmi_msm_state->pd->core_power(0, 1);
+	hdmi_msm_state->pd->enable_5v(0);
+	clk_disable_unprepare(hdmi_msm_state->hdmi_app_clk);
+}
+
 static void hdmi_msm_hpd_off(void)
 {
 	int rc = 0;
@@ -4392,6 +4431,7 @@ void mhl_connect_api(boolean on)
 	DEV_INFO("Hdmi state switched to %d: %s\n",
 		 external_common_state->sdev.state,  __func__);
 	if (on) {
+		wake_lock(&hdmi_msm_state->hdmi_wake_lock);
 		hdmi_msm_read_edid();
 		if (hdmi_msm_has_hdcp())
 			hdmi_msm_state->reauth = FALSE ;
@@ -4420,6 +4460,7 @@ void mhl_connect_api(boolean on)
 		switch_set_state(&external_common_state->sdev, 0);
 		DEV_INFO("Hdmi state switched to %d: %s\n",
 			 external_common_state->sdev.state,  __func__);
+		wake_unlock(&hdmi_msm_state->hdmi_wake_lock);
 	}
 }
 EXPORT_SYMBOL(mhl_connect_api);
@@ -4621,6 +4662,10 @@ static int __devinit hdmi_msm_probe(struct platform_device *pdev)
 #endif
 	}
 
+	wake_lock_init(&hdmi_msm_state->hdmi_wake_lock, WAKE_LOCK_SUSPEND, "hdmi");
+
+	queue_work(hdmi_work_queue, &hdmi_msm_state->hpd_read_work);
+
 	/* Initialize hdmi node and register with switch driver */
 	if (hdmi_prim_display)
 		external_common_state->sdev.name = "hdmi_as_primary";
@@ -4797,6 +4842,7 @@ static int __init hdmi_msm_init(void)
 	hdmi_common_init_panel_info(&hdmi_msm_panel_data.panel_info);
 	init_completion(&hdmi_msm_state->ddc_sw_done);
 	INIT_WORK(&hdmi_msm_state->hpd_state_work, hdmi_msm_hpd_state_work);
+	INIT_WORK(&hdmi_msm_state->hpd_read_work, hdmi_msm_hpd_read_work);
 #ifdef CONFIG_FB_MSM_HDMI_MSM_PANEL_HDCP_SUPPORT
 	init_completion(&hdmi_msm_state->hdcp_success_done);
 	INIT_WORK(&hdmi_msm_state->hdcp_reauth_work, hdmi_msm_hdcp_reauth_work);

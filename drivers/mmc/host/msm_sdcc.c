@@ -226,6 +226,14 @@ static int msmsdcc_bam_dml_reset_and_restore(struct msmsdcc_host *host)
 {
 	int rc;
 
+	/* Reset and init DML */
+	rc = msmsdcc_dml_init(host);
+	if (rc) {
+		pr_err("%s: msmsdcc_dml_init error=%d\n",
+				mmc_hostname(host->mmc), rc);
+		goto out;
+	}
+
 	/* Reset all SDCC BAM pipes */
 	rc = msmsdcc_sps_reset_ep(host, &host->sps.prod);
 	if (rc) {
@@ -258,21 +266,13 @@ static int msmsdcc_bam_dml_reset_and_restore(struct msmsdcc_host *host)
 	}
 
 	rc = msmsdcc_sps_restore_ep(host, &host->sps.cons);
-	if (rc) {
+	if (rc)
 		pr_err("%s: msmsdcc_sps_restore_ep(cons) error=%d\n",
 				mmc_hostname(host->mmc), rc);
-		goto out;
-	}
-
-	/* Reset and init DML */
-	rc = msmsdcc_dml_init(host);
-	if (rc)
-		pr_err("%s: msmsdcc_dml_init error=%d\n",
-				mmc_hostname(host->mmc), rc);
+	else
+		host->sps.reset_bam = false;
 
 out:
-	if (!rc)
-		host->sps.reset_bam = false;
 	return rc;
 }
 
@@ -420,56 +420,6 @@ static void msmsdcc_reset_and_restore(struct msmsdcc_host *host)
 		host->dummy_52_needed = 0;
 }
 
-static void msmsdcc_reset_dpsm(struct msmsdcc_host *host)
-{
-	struct mmc_request *mrq = host->curr.mrq;
-
-	if (!mrq || !mrq->cmd || (!mrq->data && !host->pending_dpsm_reset))
-			goto out;
-
-	/*
-	 * For CMD24, if auto prog done is not supported defer
-	 * dpsm reset until prog done is received. Otherwise,
-	 * we poll here unnecessarily as TXACTIVE will not be
-	 * deasserted until DAT0 goes high.
-	 */
-	if ((mrq->cmd->opcode == MMC_WRITE_BLOCK) && !is_auto_prog_done(host)) {
-		host->pending_dpsm_reset = true;
-		goto out;
-	}
-
-	/* Make sure h/w (TX/RX) is inactive before resetting DPSM */
-	if (is_wait_for_tx_rx_active(host)) {
-		ktime_t start = ktime_get();
-
-		while (readl_relaxed(host->base + MMCISTATUS) &
-				(MCI_TXACTIVE | MCI_RXACTIVE)) {
-			/*
-			 * TX/RX active bits may be asserted for 4HCLK + 4MCLK
-			 * cycles (~11us) after data transfer due to clock mux
-			 * switching delays. Let's poll for 1ms and panic if
-			 * still active.
-			 */
-			if (ktime_to_us(ktime_sub(ktime_get(), start)) > 1000) {
-				pr_err("%s: %s still active\n",
-					mmc_hostname(host->mmc),
-					readl_relaxed(host->base + MMCISTATUS)
-					& MCI_TXACTIVE ? "TX" : "RX");
-				msmsdcc_dump_sdcc_state(host);
-				msmsdcc_reset_and_restore(host);
-				host->pending_dpsm_reset = false;
-				goto out;
-			}
-		}
-	}
-
-	writel_relaxed(0, host->base + MMCIDATACTRL);
-	msmsdcc_sync_reg_wr(host); /* Allow the DPSM to be reset */
-	host->pending_dpsm_reset = false;
-out:
-	return;
-}
-
 static int
 msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 {
@@ -483,8 +433,6 @@ msmsdcc_request_end(struct msmsdcc_host *host, struct mmc_request *mrq)
 		mrq->data->bytes_xfered = host->curr.data_xfered;
 	if (mrq->cmd->error == -ETIMEDOUT)
 		mdelay(5);
-
-	msmsdcc_reset_dpsm(host);
 
 	/* Clear current request information as current request has ended */
 	memset(&host->curr, 0, sizeof(struct msmsdcc_curr_req));
@@ -507,6 +455,8 @@ msmsdcc_stop_data(struct msmsdcc_host *host)
 	host->curr.got_dataend = 0;
 	host->curr.wait_for_auto_prog_done = false;
 	host->curr.got_auto_prog_done = false;
+	writel_relaxed(0, host->base + MMCIDATACTRL);
+	msmsdcc_sync_reg_wr(host); /* Allow the DPSM to be reset */
 }
 
 static inline uint32_t msmsdcc_fifo_addr(struct msmsdcc_host *host)
@@ -652,7 +602,6 @@ msmsdcc_dma_complete_tlet(unsigned long data)
 		if (!mrq->data->stop || mrq->cmd->error ||
 			(mrq->sbc && !mrq->data->error)) {
 			mrq->data->bytes_xfered = host->curr.data_xfered;
-			msmsdcc_reset_dpsm(host);
 			del_timer(&host->req_tout_timer);
 			/*
 			 * Clear current request information as current
@@ -807,7 +756,6 @@ static void msmsdcc_sps_complete_tlet(unsigned long data)
 		if (!mrq->data->stop || mrq->cmd->error ||
 			(mrq->sbc && !mrq->data->error)) {
 			mrq->data->bytes_xfered = host->curr.data_xfered;
-			msmsdcc_reset_dpsm(host);
 			del_timer(&host->req_tout_timer);
 			/*
 			 * Clear current request information as current
@@ -1181,15 +1129,16 @@ msmsdcc_start_command_deferred(struct msmsdcc_host *host,
 	if (mmc_cmd_type(cmd) == MMC_CMD_ADTC)
 		*c |= MCI_CSPM_DATCMD;
 
-	/* Check if AUTO CMD19 is required or not? */
-	if (host->tuning_needed && host->en_auto_cmd19 &&
-		!(host->mmc->ios.timing == MMC_TIMING_MMC_HS200)) {
-
+	/* Check if AUTO CMD19/CMD21 is required or not? */
+	if (host->tuning_needed &&
+		(host->en_auto_cmd19 || host->en_auto_cmd21)) {
 		/*
 		 * For open ended block read operation (without CMD23),
-		 * AUTO_CMD19 bit should be set while sending the READ command.
+		 * AUTO_CMD19/AUTO_CMD21 bit should be set while sending
+		 * the READ command.
 		 * For close ended block read operation (with CMD23),
-		 * AUTO_CMD19 bit should be set while sending CMD23.
+		 * AUTO_CMD19/AUTO_CMD21 bit should be set while sending
+		 * CMD23.
 		 */
 		if ((cmd->opcode == MMC_SET_BLOCK_COUNT &&
 			host->curr.mrq->cmd->opcode ==
@@ -1201,6 +1150,9 @@ msmsdcc_start_command_deferred(struct msmsdcc_host *host,
 			if (host->en_auto_cmd19 &&
 			    host->mmc->ios.timing == MMC_TIMING_UHS_SDR104)
 				*c |= MCI_CSPM_AUTO_CMD19;
+			else if (host->en_auto_cmd21 &&
+			    host->mmc->ios.timing == MMC_TIMING_MMC_HS200)
+				*c |= MCI_CSPM_AUTO_CMD21;
 		}
 	}
 
@@ -1214,9 +1166,7 @@ msmsdcc_start_command_deferred(struct msmsdcc_host *host,
 				MCI_DLL_CONFIG) & ~MCI_CDR_EN),
 				host->base + MCI_DLL_CONFIG);
 
-	if (((cmd->flags & MMC_RSP_R1B) == MMC_RSP_R1B) ||
-			(cmd->opcode == MMC_SEND_STATUS &&
-			 !(cmd->flags & MMC_CMD_ADTC))) {
+	if ((cmd->flags & MMC_RSP_R1B) == MMC_RSP_R1B) {
 		*c |= MCI_CPSM_PROGENA;
 		host->prog_enable = 1;
 	}
@@ -4839,6 +4789,8 @@ static inline void set_auto_cmd_setting(struct device *dev,
 		spin_lock_irqsave(&host->lock, flags);
 		if (is_cmd19)
 			host->en_auto_cmd19 = !!temp;
+		else
+			host->en_auto_cmd21 = !!temp;
 		spin_unlock_irqrestore(&host->lock, flags);
 	}
 }
@@ -4858,6 +4810,25 @@ store_enable_auto_cmd19(struct device *dev, struct device_attribute *attr,
 			const char *buf, size_t count)
 {
 	set_auto_cmd_setting(dev, buf, true);
+
+	return count;
+}
+
+static ssize_t
+show_enable_auto_cmd21(struct device *dev, struct device_attribute *attr,
+		       char *buf)
+{
+	struct mmc_host *mmc = dev_get_drvdata(dev);
+	struct msmsdcc_host *host = mmc_priv(mmc);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", host->en_auto_cmd21);
+}
+
+static ssize_t
+store_enable_auto_cmd21(struct device *dev, struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	set_auto_cmd_setting(dev, buf, false);
 
 	return count;
 }
@@ -5765,7 +5736,7 @@ msmsdcc_probe(struct platform_device *pdev)
 		goto remove_polling_file;
 
 	if (!is_auto_cmd19(host))
-		goto exit;
+		goto add_auto_cmd21_atrr;
 
 	/* Sysfs entry for AUTO CMD19 control */
 	host->auto_cmd19_attr.show = show_enable_auto_cmd19;
@@ -5777,9 +5748,26 @@ msmsdcc_probe(struct platform_device *pdev)
 	if (ret)
 		goto remove_idle_timeout_file;
 
+ add_auto_cmd21_atrr:
+	if (!is_auto_cmd21(host))
+		goto exit;
+
+	/* Sysfs entry for AUTO CMD21 control */
+	host->auto_cmd21_attr.show = show_enable_auto_cmd21;
+	host->auto_cmd21_attr.store = store_enable_auto_cmd21;
+	sysfs_attr_init(&host->auto_cmd21_attr.attr);
+	host->auto_cmd21_attr.attr.name = "enable_auto_cmd21";
+	host->auto_cmd21_attr.attr.mode = S_IRUGO | S_IWUSR;
+	ret = device_create_file(&pdev->dev, &host->auto_cmd21_attr);
+	if (ret)
+		goto remove_auto_cmd19_attr_file;
+
  exit:
 	return 0;
 
+ remove_auto_cmd19_attr_file:
+	if (is_auto_cmd19(host))
+		device_remove_file(&pdev->dev, &host->auto_cmd19_attr);
  remove_idle_timeout_file:
 	device_remove_file(&pdev->dev, &host->idle_timeout);
  remove_polling_file:
@@ -5864,6 +5852,8 @@ static int msmsdcc_remove(struct platform_device *pdev)
 
 	if (is_auto_cmd19(host))
 		device_remove_file(&pdev->dev, &host->auto_cmd19_attr);
+	if (is_auto_cmd21(host))
+		device_remove_file(&pdev->dev, &host->auto_cmd21_attr);
 	device_remove_file(&pdev->dev, &host->max_bus_bw);
 	if (!plat->status_irq)
 		device_remove_file(&pdev->dev, &host->polling);

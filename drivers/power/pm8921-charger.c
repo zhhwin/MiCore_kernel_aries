@@ -1061,7 +1061,6 @@ static void check_battery_valid(struct pm8921_chg_chip *chip)
 {
 	if (is_battery_valid(chip) == 0) {
 		pr_err("batt_id not valid, disbling charging\n");
-		pm_chg_auto_enable(chip, 0);
 	} else {
 		pm_chg_auto_enable(chip, !charging_disabled);
 	}
@@ -4045,6 +4044,8 @@ static int __devinit pm8921_charger_probe(struct platform_device *pdev)
 	chip->rconn_mohm = pdata->rconn_mohm;
 	chip->led_src_config = pdata->led_src_config;
 	chip->has_dc_supply = pdata->has_dc_supply;
+
+	chip->max_voltage_mv = 4200;
 
 	rc = pm8921_chg_hw_init(chip);
 	if (rc) {

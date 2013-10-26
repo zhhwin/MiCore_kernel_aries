@@ -1302,6 +1302,8 @@ struct input_dev {
 	unsigned long snd[BITS_TO_LONGS(SND_CNT)];
 	unsigned long sw[BITS_TO_LONGS(SW_CNT)];
 
+	struct timeval key_time[KEY_CNT];
+
 	int (*open)(struct input_dev *dev);
 	void (*close)(struct input_dev *dev);
 	int (*flush)(struct input_dev *dev, struct file *file);
@@ -1507,6 +1509,7 @@ int input_flush_device(struct input_handle *handle, struct file *file);
 
 void input_event(struct input_dev *dev, unsigned int type, unsigned int code, int value);
 void input_inject_event(struct input_handle *handle, unsigned int type, unsigned int code, int value);
+void input_get_event(struct input_dev *dev, unsigned int type, unsigned int code, struct input_event *event);
 
 static inline void input_report_key(struct input_dev *dev, unsigned int code, int value)
 {

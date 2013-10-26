@@ -251,6 +251,7 @@ static void input_handle_event(struct input_dev *dev,
 					input_stop_autorepeat(dev);
 			}
 
+			do_gettimeofday(&dev->key_time[code]);
 			disposition = INPUT_PASS_TO_HANDLERS;
 		}
 		break;
@@ -390,6 +391,52 @@ void input_inject_event(struct input_handle *handle,
 	}
 }
 EXPORT_SYMBOL(input_inject_event);
+
+/**
+ * input_get_event() - get the last input event
+ * @dev: device to check
+ * @type: type of the event
+ * @code: event code
+ * @event: value of the last event
+ *
+ * NOTE: if dev==NULL, get the last event from all input devices
+ */
+void input_get_event(struct input_dev *dev,
+		unsigned int type, unsigned int code, struct input_event *event)
+{
+	memset(event, 0, sizeof(*event));
+
+	if (dev) { /* check the specified device */
+		unsigned long flags;
+
+		if (!is_event_supported(type, dev->evbit, EV_MAX))
+			return;
+
+		spin_lock_irqsave(&dev->event_lock, flags);
+		switch (type) {
+		case EV_KEY:
+			if (is_event_supported(code, dev->keybit, KEY_MAX)) {
+				event->value = test_bit(code, dev->key);
+				event->time  = dev->key_time[code];
+				event->type  = type;
+				event->code  = code;
+			}
+			break;
+		}
+		spin_unlock_irqrestore(&dev->event_lock, flags);
+	} else { /* iterate through all input devices */
+		mutex_lock(&input_mutex);
+		list_for_each_entry(dev, &input_dev_list, node) {
+			struct input_event temp;
+
+			input_get_event(dev, type, code, &temp);
+			if (timeval_compare(&event->time, &temp.time) < 0)
+				*event = temp; /* record the last one */
+		}
+		mutex_unlock(&input_mutex);
+	}
+}
+EXPORT_SYMBOL(input_get_event);
 
 /**
  * input_alloc_absinfo - allocates array of input_absinfo structs
@@ -590,15 +637,18 @@ EXPORT_SYMBOL(input_close_device);
 static void input_dev_release_keys(struct input_dev *dev)
 {
 	int code;
+	int result = false;
 
 	if (is_event_supported(EV_KEY, dev->evbit, EV_MAX)) {
 		for (code = 0; code <= KEY_MAX; code++) {
 			if (is_event_supported(code, dev->keybit, KEY_MAX) &&
 			    __test_and_clear_bit(code, dev->key)) {
 				input_pass_event(dev, EV_KEY, code, 0);
+				result = true;
 			}
 		}
-		input_pass_event(dev, EV_SYN, SYN_REPORT, 1);
+		if (result)
+			input_pass_event(dev, EV_SYN, SYN_REPORT, 1);
 	}
 }
 
