@@ -4816,8 +4816,7 @@ VOS_STATUS wlan_hdd_restart_driver(hdd_context_t *pHddCtx)
 module_init(hdd_module_init);
 module_exit(hdd_module_exit);
 
-MODULE_LICENSE("GPL"); // Not really, it is "Proprietary" but it breaks
-                       // build and I currently don't know a better solution
+MODULE_LICENSE("Proprietary");
 MODULE_AUTHOR("Qualcomm Atheros, Inc.");
 MODULE_DESCRIPTION("WLAN HOST DEVICE DRIVER");
 
