@@ -1,7 +1,22 @@
 MODNAME := wlan
+BUILD_DEBUG_VERSION := 1
 
+#Enable this flag to build driver in diag version
+BUILD_DIAG_VERSION := 0
+#Enable this flag to build ftm driver
+BUILD_FTM_DRIVER := 0
 #Do we panic on bug?  default is to warn
 PANIC_ON_BUG := 0
+
+#Re-enable wifi on WDI timeout
+RE_ENABLE_WIFI_ON_WDI_TIMEOUT := 0
+
+#Flag to enable Legacy Fast Roaming(LFR), default is y
+CONFIG_QCOM_LFR := y
+
+#JB kernel has PMKSA patches, hence enabling this flag
+CONFIG_QCOM_OKC := y
+
 
 ifeq ($(CONFIG_CFG80211),y)
 HAVE_CFG80211 := 1
@@ -475,7 +490,12 @@ CDEFINES  := -DANI_PRODUCT_TYPE_CLIENT=1 \
 		-DWLAN_AP_STA_CONCURRENCY \
 		-DFEATURE_WLAN_SCAN_PNO \
 		-DWLAN_FEATURE_PACKET_FILTERING \
-		-DWLAN_FEATURE_VOWIFI
+		-DWLAN_FEATURE_VOWIFI \
+		-DWLAN_FEATURE_11AC \
+		-DWLAN_FEATURE_P2P_DEBUG \
+		-DWLAN_FEATURE_11AC_HIGH_TP \
+		-DWLAN_ENABLE_AGEIE_ON_SCAN_RESULTS \
+		-DWLAN_FEATURE_HOLD_RX_WAKELOCK
 
 # there are still pieces of code which are conditional upon these
 # need to investigate all of them to see which should also be
@@ -491,8 +511,8 @@ CDEFINES += -DWLAN_DEBUG \
 endif
 
 ifeq ($(CONFIG_SLUB_DEBUG_ON),y)
-CDEFINES += -DTIMER_MANAGER
-CDEFINES += -DMEMORY_DEBUG
+#CDEFINES += -DTIMER_MANAGER
+#CDEFINES += -DMEMORY_DEBUG
 endif
 
 ifeq ($(HAVE_CFG80211),1)
@@ -504,6 +524,14 @@ ifeq ($(CONFIG_QCOM_CCX),y)
 CDEFINES += -DFEATURE_WLAN_CCX
 endif
 
+ifeq ($(CONFIG_QCOM_LFR),y)
+CDEFINES += -DFEATURE_WLAN_LFR
+endif
+
+ifeq ($(CONFIG_QCOM_OKC),y)
+CDEFINES += -DFEATURE_WLAN_OKC
+endif
+
 ifeq ($(BUILD_DIAG_VERSION),1)
 CDEFINES += -DFEATURE_WLAN_DIAG_SUPPORT
 CDEFINES += -DFEATURE_WLAN_DIAG_SUPPORT_CSR
@@ -513,6 +541,15 @@ endif
 # enable the MAC Address auto-generation feature
 CDEFINES += -DWLAN_AUTOGEN_MACADDR_FEATURE
 
+EXTRA_CFLAGS += -march=armv7-a
+CDEFINES += -DMSM_PLATFORM_8960
+CDEFINES += -DVOLANS_RF
+
+
+ifeq ($(HAVE_BTAMP),1)
+CDEFINES += -DWLAN_BTAMP_FEATURE
+endif
+
 ifeq ($(WLAN_DBG),1)
 CDEFINES += -DWLAN_DEBUG
 endif
@@ -521,13 +558,13 @@ ifeq ($(PANIC_ON_BUG),1)
 CDEFINES += -DPANIC_ON_BUG
 endif
 
+ifeq ($(RE_ENABLE_WIFI_ON_WDI_TIMEOUT),1)
+CDEFINES += -DWDI_RE_ENABLE_WIFI_ON_WDI_TIMEOUT
+endif
+
 ifeq ($(CONFIG_PRIMA_WLAN_BTAMP),y)
 CDEFINES += -DWLAN_BTAMP_FEATURE
 endif
-
-CDEFINES += -DWLAN_FEATURE_11AC
-
-CDEFINES += -DWLAN_OPEN_SOURCE
 
 KBUILD_CPPFLAGS += $(CDEFINES)
 
