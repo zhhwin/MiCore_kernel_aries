@@ -566,8 +566,10 @@ ifeq ($(CONFIG_PRIMA_WLAN_BTAMP),y)
 CDEFINES += -DWLAN_BTAMP_FEATURE
 endif
 
-KBUILD_CPPFLAGS += $(CDEFINES)
+# Fix build for GCC 4.7
+EXTRA_CFLAGS += -Wno-maybe-uninitialized -Wno-unused-function -fno-pic
 
+KBUILD_CPPFLAGS += $(CDEFINES)
 
 $(MODNAME)-objs := $(OBJS)
 obj-$(CONFIG_PRIMA_WLAN) += $(MODNAME).o
