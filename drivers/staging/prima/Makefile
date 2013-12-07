@@ -567,7 +567,7 @@ CDEFINES += -DWLAN_BTAMP_FEATURE
 endif
 
 # Fix build for GCC 4.7
-EXTRA_CFLAGS += -Wno-maybe-uninitialized -Wno-unused-function -fno-pic
+EXTRA_CFLAGS += -Wno-maybe-uninitialized -Wno-unused-function
 
 KBUILD_CPPFLAGS += $(CDEFINES)
 
