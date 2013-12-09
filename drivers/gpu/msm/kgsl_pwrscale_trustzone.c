@@ -145,7 +145,7 @@ static void tz_wake(struct kgsl_device *device, struct kgsl_pwrscale *pwrscale)
 static int laziness = 5;
 module_param_named(simple_laziness, laziness, int, 0664);
 
-static int ramp_up_threshold = 6000;
+static int ramp_up_threshold = 10000;
 module_param_named(simple_ramp_threshold, ramp_up_threshold, int, 0664);
 
 static int simple_governor(struct kgsl_device *device, int idle_stat)
