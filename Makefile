@@ -351,7 +351,7 @@ CC		= $(srctree)/scripts/gcc-wrapper.py $(REAL_CC)
 
 CHECKFLAGS     := -D__linux__ -Dlinux -D__STDC__ -Dunix -D__unix__ \
 		  -Wbitwise -Wno-return-void $(CF)
-LIN_FLAG  = -fgcse-lm -fgcse-sm -fsched-spec-load -fforce-addr -ffast-math -fsingle-precision-constant -mcpu=cortex-a9 -mtune=cortex-a15 -marm -march=armv7-a -mfpu=neon -funsafe-math-optimizations -ftree-vectorize
+LIN_FLAG  = -fgcse-lm -fgcse-sm -fsched-spec-load -fforce-addr -ffast-math -fsingle-precision-constant -mcpu=cortex-a9 -mtune=cortex-a15 -marm -march=armv7-a -mfpu=neon -funsafe-math-optimizations
 MODFLAGS  = -DMODULE $(LIN_FLAG)
 CFLAGS_MODULE   = -fno-pic $(MODFLAGS)
 AFLAGS_MODULE   = $(MODFLAGS)
@@ -374,7 +374,7 @@ KBUILD_CPPFLAGS := -D__KERNEL__
 #
 # LINARO OPT
 #
-CFLAGS_A15 = -mcpu=cortex-a9 -mtune=cortex-a15 -marm -march=armv7-a -mfpu=neon -funsafe-math-optimizations -ftree-vectorize
+CFLAGS_A15 = -mcpu=cortex-a9 -mtune=cortex-a15 -marm -march=armv7-a -mfpu=neon -funsafe-math-optimizations 
 CFLAGS_MODULO = -fmodulo-sched -fmodulo-sched-allow-regmoves
 KERNEL_MODS  = $(CFLAGS_A15) $(CFLAGS_MODULO)
 
