@@ -62,7 +62,7 @@
 #define DBS_OPTIMAL_FREQ			(1296000)
 
 #ifdef CONFIG_CPUFREQ_ID_PERFLOCK
-#define DBS_PERFLOCK_MIN_FREQ			(486000)
+#define DBS_PERFLOCK_MIN_FREQ			(594000)
 #endif
 
 static u64 freq_boosted_time;
