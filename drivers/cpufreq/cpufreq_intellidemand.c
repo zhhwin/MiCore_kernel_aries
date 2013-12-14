@@ -77,6 +77,10 @@
 #define SUP_HIGH_SLOW_UP_DUR (5)
 #define SUP_FREQ_LEVEL (14)
 
+#ifdef CONFIG_CPUFREQ_ID_PERFLOCK
+#define DBS_PERFLOCK_MIN_FREQ                        (384000)
+#endif
+
 #if 0
 static unsigned long stored_sampling_rate;
 #endif
@@ -138,6 +142,10 @@ static unsigned int skip_intellidemand = 0;
 
 #define POWERSAVE_BIAS_MAXLEVEL			(1000)
 #define POWERSAVE_BIAS_MINLEVEL			(-1000)
+
+#ifdef CONFIG_CPUFREQ_ID_PERFLOCK
+static unsigned int saved_policy_min = 0;
+#endif
 
 static void do_dbs_timer(struct work_struct *work);
 static int cpufreq_governor_dbs(struct cpufreq_policy *policy,
@@ -1792,6 +1800,20 @@ static void do_dbs_timer(struct work_struct *work)
 	unsigned int cpu = dbs_info->cpu;
 	int sample_type = dbs_info->sample_type;
 	int delay = msecs_to_jiffies(50);
+
+#ifdef CONFIG_CPUFREQ_ID_PERFLOCK
+        struct cpufreq_policy *policy;
+
+        policy = dbs_info->cur_policy;
+
+        if (num_online_cpus() >= 2) {
+                if (saved_policy_min != 0)
+                        policy->min = saved_policy_min;
+        } else if (num_online_cpus() == 1) {
+                saved_policy_min = policy->min;
+                policy->min = DBS_PERFLOCK_MIN_FREQ;
+        }
+#endif
 
 	if (skip_intellidemand)
 		goto sched_wait;
